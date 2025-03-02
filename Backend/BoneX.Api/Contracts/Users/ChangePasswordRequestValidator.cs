@@ -1,5 +1,4 @@
 ﻿using BoneX.Api.Abstraction.Consts;
-using FluentValidation;
 
 namespace BoneX.Api.Contracts.Users;
 

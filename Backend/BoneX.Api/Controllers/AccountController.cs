@@ -1,13 +1,11 @@
-﻿using BoneX.Api.Abstraction;
-using BoneX.Api.Contracts.Users;
+﻿using BoneX.Api.Contracts.Users;
 using BoneX.Api.Extensions;
-using Microsoft.AspNetCore.Authorization;
 
 namespace BoneX.Api.Controllers;
 
 [Route("me")]
 [ApiController]
-[Authorize]
+//[Authorize]
 public class AccountController(IUserService userService) : ControllerBase
 {
     private readonly IUserService _userService = userService;
@@ -34,5 +32,13 @@ public class AccountController(IUserService userService) : ControllerBase
         var result = await _userService.ChangePasswordAsync(User.GetUserId()!, request);
 
         return result.IsSuccess ? NoContent() : result.ToProblem();
+    }
+
+    [HttpGet("doctors")]
+    public async Task<IActionResult> GetAllDoctors()
+    {
+        var result = await _userService.GetAllDoctorsAsync();
+
+        return result.IsSuccess ? Ok(result.Value) : result.ToProblem();
     }
 }
