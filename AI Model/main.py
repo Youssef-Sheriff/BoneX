@@ -1,7 +1,17 @@
 import os
-import gdown
+try:
+    import gdown
+except ImportError:
+    os.system('pip install gdown')
+    import gdown
+
 from flask import Flask, request, jsonify
-from flask_cors import CORS
+try:
+    from flask_cors import CORS
+except ImportError:
+    os.system('pip install flask-cors')
+    from flask_cors import CORS
+    
 import keras
 import numpy as np
 import cv2
