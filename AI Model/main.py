@@ -1,42 +1,19 @@
 import os
-try:
-    import gdown
-except ImportError:
-    os.system('pip install gdown')
-    import gdown
-
+import sys
 from flask import Flask, request, jsonify
-try:
-    from flask_cors import CORS
-except ImportError:
-    os.system('pip install flask-cors')
-    from flask_cors import CORS
-    
+from flask_cors import CORS
 import keras
 import numpy as np
 import cv2
 from PIL import Image
 import io
 
+# No need to import gdown here since we download the model in the Dockerfile
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Google Drive File ID (Extracted from your link)
-MODEL_ID = "1ZwS3XGujLt2z6XoaDJ_7DTW7UG-bMA3m"
 MODEL_PATH = "BoneX_Final_ModelV4.h5"
-
-# Function to download model from Google Drive
-def download_model():
-    if not os.path.exists(MODEL_PATH):  # Download only if not present
-        print("Downloading model from Google Drive...")
-        gdown.download(f"https://drive.google.com/uc?id={MODEL_ID}", MODEL_PATH, quiet=False)
-        print("Model downloaded successfully!")
-
-# Ensure model is downloaded before loading
-download_model()
-
-# Load BoneX model
-model = keras.models.load_model(MODEL_PATH)
 
 # Preprocessing function
 def preprocess(image):
@@ -59,19 +36,38 @@ def preprocess(image):
 # API route to receive image and predict
 @app.route('/predict', methods=['POST'])
 def predict():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
 
-    file = request.files['file']
-    image = Image.open(io.BytesIO(file.read()))  # Read image
+        file = request.files['file']
+        image = Image.open(io.BytesIO(file.read()))  # Read image
 
-    # Preprocess and predict
-    processed_image = preprocess(image)
-    prediction = model.predict(processed_image)
-    result = int(prediction[0][0] > 0.5)  # Convert to 0 or 1
-    result_text = "There's a fracture!" if result == 0 else "No fracture detected!"
+        # Preprocess and predict
+        processed_image = preprocess(image)
+        prediction = model.predict(processed_image)
+        result = int(prediction[0][0] > 0.5)  # Convert to 0 or 1
+        result_text = "There's a fracture!" if result == 0 else "No fracture detected!"
 
-    return jsonify({'prediction': result_text})
+        return jsonify({'prediction': result_text})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Health check endpoint
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'healthy'}), 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, port=5000)
+    print("Loading model...")
+    try:
+        model = keras.models.load_model(MODEL_PATH)
+        print("Model loaded successfully!")
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        sys.exit(1)
+        
+    # Get port from environment variable or use default
+    port = int(os.environ.get("PORT", 5000))
+    print(f"Starting server on port {port}...")
+    app.run(host='0.0.0.0', debug=False, port=port)

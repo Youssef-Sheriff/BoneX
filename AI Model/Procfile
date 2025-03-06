@@ -1,1 +1,0 @@
-web: pip install --user -r requirements.txt && pip install --user gdown flask-cors && python "AI Model/main.py"
