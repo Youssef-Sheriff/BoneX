@@ -4,14 +4,23 @@ FROM python:3.10-slim
 # Set the working directory inside the container
 WORKDIR /app
 
-# Install required system dependencies for OpenCV
+# Install required system dependencies for OpenCV - expanded list to fix the libGL error
 RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender1 && \
-    rm -rf /var/lib/apt/lists/*  # Clean up to reduce image size
+    libxrender1 \
+    libfontconfig1 \
+    libxkbcommon-x11-0 \
+    libxi6 \
+    libxrandr2 \
+    libxxf86vm1 \
+    libxfixes3 \
+    libxcursor1 \
+    libxinerama1 \
+    libgtk-3-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements.txt and install Python dependencies
 COPY requirements.txt .
