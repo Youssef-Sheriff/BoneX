@@ -12,5 +12,10 @@ public class PatientRegisterRequestValidator : AbstractValidator<PatientRegister
         RuleFor(x => x.PhoneNumber).NotEmpty();
         RuleFor(x => x.PastMedicalConditions).NotEmpty().WithMessage("Past medical conditions are required.");
         RuleFor(x => x.ChronicConditions).IsInEnum();
+
+        RuleFor(x => x.ProfilePicture)
+            .NotNull()
+            .Must(x => x.ContentType.Contains("image"))
+            .WithMessage("Profile picture must be an image");
     }
 }

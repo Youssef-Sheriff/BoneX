@@ -1,11 +1,12 @@
 ﻿using BoneX.Api.Contracts.Users;
 using BoneX.Api.Extensions;
+using Microsoft.AspNetCore.Authorization;
 
 namespace BoneX.Api.Controllers;
 
 [Route("me")]
 [ApiController]
-//[Authorize]
+[Authorize]
 public class AccountController(IUserService userService) : ControllerBase
 {
     private readonly IUserService _userService = userService;
@@ -34,11 +35,18 @@ public class AccountController(IUserService userService) : ControllerBase
         return result.IsSuccess ? NoContent() : result.ToProblem();
     }
 
-    [HttpGet("doctors")]
-    public async Task<IActionResult> GetAllDoctors()
+    [HttpPost("profile-picture")]
+    public async Task<IActionResult> UploadProfilePicture([FromForm] UploadProfilePictureRequest request)
     {
-        var result = await _userService.GetAllDoctorsAsync();
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
 
-        return result.IsSuccess ? Ok(result.Value) : result.ToProblem();
+        var result = await _userService.UploadProfilePictureAsync(userId, request.ProfilePicture);
+
+        if (result.IsFailure)
+            return BadRequest(result.Error);
+
+        return Ok(new { ProfilePictureUrl = result.Value });
     }
 }

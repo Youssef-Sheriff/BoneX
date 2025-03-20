@@ -1,6 +1,4 @@
-﻿using BoneX.Api.Abstraction;
-
-namespace BoneX.Api.Errors;
+﻿namespace BoneX.Api.Errors;
 
 public static class UserErrors
 {
@@ -24,4 +22,10 @@ public static class UserErrors
 
     public static readonly Error DuplicatedConfirmation =
         new("User.DuplicatedConfirmation", "Email already confirmed", StatusCodes.Status400BadRequest);
+
+    public static readonly Error Unauthorized =
+        new("User.Unauthorized", "Unauthorized", StatusCodes.Status401Unauthorized);
+
+    public static readonly Error NotFound =
+        new("User.UserNotFound", "User not found", StatusCodes.Status404NotFound);
 }

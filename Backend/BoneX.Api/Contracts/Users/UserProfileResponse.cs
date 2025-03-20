@@ -2,7 +2,9 @@
 
 public record UserProfileResponse(
     string Email,
-    string UserName,
+    //string UserName,
     string FirstName,
-    string LastName
+    string LastName,
+    string Role,
+    string? ProfilePicture
 );
