@@ -4,6 +4,7 @@ using BoneX.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 
@@ -12,9 +13,11 @@ using NetTopologySuite.Geometries;
 namespace BoneX.Api.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250301002010_AddDoctorsAndPatientsTables")]
+    partial class AddDoctorsAndPatientsTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -131,33 +134,9 @@ namespace BoneX.Api.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("CancellationReason")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("DiagnosisNotes")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("DoctorId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
-
-                    b.Property<bool>("HasFollowUp")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsFeedbackRequested")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsPatientReminded")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("LastUpdatedAt")
-                        .HasColumnType("datetime2");
 
                     b.Property<string>("Notes")
                         .HasColumnType("nvarchar(max)");
@@ -165,190 +144,20 @@ namespace BoneX.Api.Persistence.Migrations
                     b.Property<string>("PatientId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("Prescription")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<double?>("Rating")
-                        .HasColumnType("float");
-
-                    b.Property<DateTime?>("RescheduledTime")
-                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("ScheduledTime")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("TreatmentPlan")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DoctorId", "ScheduledTime");
-
-                    b.HasIndex("PatientId", "ScheduledTime");
-
-                    b.ToTable("Appointments");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.AppointmentFeedback", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("AppointmentId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Comments")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("Rating")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AppointmentId")
-                        .IsUnique();
-
-                    b.ToTable("AppointmentFeedbacks");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.AppointmentFollowUp", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("AppointmentId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("FollowUpDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Notes")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AppointmentId");
-
-                    b.ToTable("AppointmentFollowUp");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.DoctorAvailability", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("DayOfWeek")
-                        .HasColumnType("int");
-
-                    b.Property<string>("DoctorId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<TimeOnly>("EndTime")
-                        .HasColumnType("time");
-
-                    b.Property<bool>("IsAvailable")
-                        .HasColumnType("bit");
-
-                    b.Property<TimeOnly>("StartTime")
-                        .HasColumnType("time");
-
-                    b.HasKey("Id");
-
                     b.HasIndex("DoctorId");
-
-                    b.ToTable("DoctorAvailabilities");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.DoctorReview", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("DoctorId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<DateTime>("ReviewDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ReviewText")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("XrayImageId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DoctorId");
-
-                    b.HasIndex("XrayImageId");
-
-                    b.ToTable("DoctorReviews");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.XrayImage", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AiAnalysisResult")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("AnalysisDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("FilePath")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("PatientId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UploadDate")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
 
                     b.HasIndex("PatientId");
 
-                    b.ToTable("XrayImages");
+                    b.ToTable("Appointments");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -488,7 +297,7 @@ namespace BoneX.Api.Persistence.Migrations
                 {
                     b.HasBaseType("BoneX.Api.Entities.ApplicationUser");
 
-                    b.Property<string>("AdditionalCertification")
+                    b.Property<string>("AdditionalCertifications")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Award")
@@ -500,7 +309,6 @@ namespace BoneX.Api.Persistence.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("AwardsOrRecognitions")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Brief")
@@ -514,7 +322,7 @@ namespace BoneX.Api.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("DegreeCertificate")
+                    b.Property<string>("DegreeCertificates")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -587,82 +395,19 @@ namespace BoneX.Api.Persistence.Migrations
 
             modelBuilder.Entity("BoneX.Api.Entities.Appointment", b =>
                 {
-                    b.HasOne("BoneX.Api.Entities.Doctor", "Doctor")
-                        .WithMany("Appointments")
-                        .HasForeignKey("DoctorId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("BoneX.Api.Entities.Patient", "Patient")
-                        .WithMany("Appointments")
-                        .HasForeignKey("PatientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Doctor");
-
-                    b.Navigation("Patient");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.AppointmentFeedback", b =>
-                {
-                    b.HasOne("BoneX.Api.Entities.Appointment", "Appointment")
-                        .WithOne("Feedback")
-                        .HasForeignKey("BoneX.Api.Entities.AppointmentFeedback", "AppointmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Appointment");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.AppointmentFollowUp", b =>
-                {
-                    b.HasOne("BoneX.Api.Entities.Appointment", "Appointment")
-                        .WithMany("FollowUps")
-                        .HasForeignKey("AppointmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Appointment");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.DoctorAvailability", b =>
-                {
-                    b.HasOne("BoneX.Api.Entities.Doctor", "Doctor")
+                    b.HasOne("BoneX.Api.Entities.ApplicationUser", "Doctor")
                         .WithMany()
                         .HasForeignKey("DoctorId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Doctor");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.DoctorReview", b =>
-                {
-                    b.HasOne("BoneX.Api.Entities.Doctor", "Doctor")
-                        .WithMany()
-                        .HasForeignKey("DoctorId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("BoneX.Api.Entities.XrayImage", "XrayImage")
-                        .WithMany("DoctorReviews")
-                        .HasForeignKey("XrayImageId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Doctor");
-
-                    b.Navigation("XrayImage");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.XrayImage", b =>
-                {
-                    b.HasOne("BoneX.Api.Entities.Patient", "Patient")
+                    b.HasOne("BoneX.Api.Entities.ApplicationUser", "Patient")
                         .WithMany()
                         .HasForeignKey("PatientId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Doctor");
 
                     b.Navigation("Patient");
                 });
@@ -716,28 +461,6 @@ namespace BoneX.Api.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.Appointment", b =>
-                {
-                    b.Navigation("Feedback");
-
-                    b.Navigation("FollowUps");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.XrayImage", b =>
-                {
-                    b.Navigation("DoctorReviews");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.Doctor", b =>
-                {
-                    b.Navigation("Appointments");
-                });
-
-            modelBuilder.Entity("BoneX.Api.Entities.Patient", b =>
-                {
-                    b.Navigation("Appointments");
                 });
 #pragma warning restore 612, 618
         }

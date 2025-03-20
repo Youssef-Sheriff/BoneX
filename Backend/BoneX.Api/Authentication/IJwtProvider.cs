@@ -1,6 +1,4 @@
-﻿using BoneX.Api.Entities;
-
-namespace BoneX.Api.Authentication;
+﻿namespace BoneX.Api.Authentication;
 
 public interface IJwtProvider
 {

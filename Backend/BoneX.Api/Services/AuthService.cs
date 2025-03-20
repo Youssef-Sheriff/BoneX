@@ -1,14 +1,10 @@
-﻿using BoneX.Api.Abstraction;
-using BoneX.Api.Contracts.Authentication;
-using BoneX.Api.Entities;
+﻿using BoneX.Api.Contracts.Authentication;
 using BoneX.Api.Errors;
 using BoneX.Api.Helper;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.WebUtilities;
 using System.Security.Cryptography;
 using System.Text;
-using static Org.BouncyCastle.Crypto.Engines.SM2Engine;
 
 namespace BoneX.Api.Services;
 
@@ -52,7 +48,7 @@ public class AuthService(
             });
             await _userManager.UpdateAsync(user);
 
-            var response = new AuthResponse(Guid.NewGuid().ToString(), user.Email, user.FirstName, user.LastName, token, expiresIn, refreshToken, refreshTokenExiration);
+            var response = new AuthResponse(user.Id, user.Email, user.FirstName, user.LastName, user.Gender, user.Role, token, expiresIn, refreshToken, refreshTokenExiration);
 
             return Result.Success(response);
         }
@@ -93,7 +89,7 @@ public class AuthService(
         });
         await _userManager.UpdateAsync(user);
 
-        var response = new AuthResponse(user.Id, user.Email, user.FirstName, user.LastName, newToken, expiresIn, newRefreshToken, refreshTokenExiration);
+        var response = new AuthResponse(user.Id, user.Email, user.FirstName, user.LastName, user.Gender, user.Role, newToken, expiresIn, newRefreshToken, refreshTokenExiration);
 
         return Result.Success(response);
     }
@@ -121,43 +117,13 @@ public class AuthService(
 
         return Result.Success();
     }
-
-
-    public async Task<Result> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
-    {
-        var emailIsExist = await _userManager.Users.AnyAsync(x => x.Email == request.Email, cancellationToken);
-
-        if (emailIsExist)
-            return Result.Failure(UserErrors.DuplicatedEmail);
-
-        var user = request.Adapt<ApplicationUser>();
-
-        var result = await _userManager.CreateAsync(user, request.Password);
-
-        if (result.Succeeded)
-        {
-            
-            var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-
-            _logger.LogInformation("Confirmation code: {code}", code);
-
-            // send email confirmation
-            await SendConfirmationEmail(user, code);
-            return Result.Success();
-        }
-        var error = result.Errors.First();
-
-        return Result.Failure(new Error(error.Code, error.Description, StatusCodes.Status400BadRequest));
-    }
-
     public async Task<Result> ConfirmEmailAsync(ConfirmEmailRequest request)
     {
-        if(await _userManager.FindByIdAsync(request.UserId) is not { } user)
+        if (await _userManager.FindByIdAsync(request.UserId) is not { } user)
             return Result.Failure(UserErrors.InvalidCode);
 
-        if(user.EmailConfirmed)
-            return Result.Failure(UserErrors.DuplicatedConfirmation);
+        //if(user.EmailConfirmed)
+        //    return Result.Failure(UserErrors.DuplicatedConfirmation);
 
         var code = request.Code;
 
@@ -182,11 +148,11 @@ public class AuthService(
 
     public async Task<Result> ResendConfirmationEmailAsync([FromBody] ResendConfirmationEmailRequest request)
     {
-        if(await _userManager.FindByEmailAsync(request.Email) is not { } user)
+        if (await _userManager.FindByEmailAsync(request.Email) is not { } user)
             return Result.Success(); // distract user from knowing if the email exists
 
-        if (user.EmailConfirmed)
-            return Result.Failure(UserErrors.DuplicatedConfirmation);
+        //if (user.EmailConfirmed)
+        //    return Result.Failure(UserErrors.DuplicatedConfirmation);
 
         var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
@@ -204,8 +170,8 @@ public class AuthService(
         if (await _userManager.FindByEmailAsync(email) is not { } user)
             return Result.Success();
 
-        if (!user.EmailConfirmed)
-            return Result.Failure(UserErrors.EmailNotConfirmed);
+        //if (!user.EmailConfirmed)
+        //    return Result.Failure(UserErrors.EmailNotConfirmed);
 
         var code = await _userManager.GeneratePasswordResetTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
@@ -222,7 +188,7 @@ public class AuthService(
     {
         var user = await _userManager.FindByEmailAsync(request.Email);
 
-        if (user is null || !user.EmailConfirmed)
+        if (user is null /* || !user.EmailConfirmed*/ )
             return Result.Failure(UserErrors.InvalidCode);
 
         IdentityResult result;
@@ -249,38 +215,60 @@ public class AuthService(
     private static string GenerateRefreshToken()
     {
         return Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
-    }    
+    }
 
-    private async Task SendConfirmationEmail( ApplicationUser user, string code)
+    private async Task SendConfirmationEmail(ApplicationUser user, string code)
     {
+        //var origin = _httpContextAccessor.HttpContext?.Request.Headers.Origin;
+
+        //var emailBody = EmailBodyBuilder.GenerateEmailBody("EmailConfirmation", new Dictionary<string, string>
+        //{
+        //    { "{{name}}", user.FirstName },
+        //    { "{{action_url}}", $"{origin}/auth/emailConfirmation?userId={user.Id}&code={code}" }
+        //});
+
+        //await _emailSender.SendEmailAsync(user.Email!, "BoneX: Email Confirmation", emailBody);
+
         var origin = _httpContextAccessor.HttpContext?.Request.Headers.Origin;
 
-        var emailBody = EmailBodyBuilder.GenerateEmailBody("EmailConfirmation",
-            new Dictionary<string, string>
-            {
-                    {"{{name}}", user.FirstName }, // after origin/ frontend edit it(add his link) - ahmed magdy -
-                    { "{{action_url}}", $"{origin}/auth/emailConfirmation?userId={user.Id}&code={code}" }
-            }
-        );
+        var emailBody = EmailBodyBuilder.GenerateEmailBody("EmailConfirmation", new Dictionary<string, string>
+    {
+        { "{{name}}", user.FirstName },
+        { "{{action_url}}", $"{origin}/auth/emailConfirmation?userId={user.Id}&code={code}" },
+        { "{{support_email}}", "bonex.ai.team@gmail.com" }
+    });
 
-        await _emailSender.SendEmailAsync(user.Email!, "✅ BoneX: Email Confirmation", emailBody);
+        await _emailSender.SendEmailAsync(user.Email!, "BoneX: Email Confirmation", emailBody);
 
     }
 
     private async Task SendResetPasswordEmail(ApplicationUser user, string code)
     {
+        //var origin = _httpContextAccessor.HttpContext?.Request.Headers.Origin;
+
+        //var emailBody = EmailBodyBuilder.GenerateEmailBody("ForgetPassword",
+        //    new Dictionary<string, string>
+        //    {
+        //            {"{{name}}", user.FirstName }, // after origin/ frontend edit it(add his link) - ahmed magdy -
+        //            { "{{action_url}}", $"{origin}/auth/forgetPassword?email={user.Email}&code={code}" }
+        //    }
+        //);
+
+        //await _emailSender.SendEmailAsync(user.Email!, "BoneX: Change Password", emailBody);
+
         var origin = _httpContextAccessor.HttpContext?.Request.Headers.Origin;
 
-        var emailBody = EmailBodyBuilder.GenerateEmailBody("ForgetPassword",
-            new Dictionary<string, string>
-            {
-                    {"{{name}}", user.FirstName }, // after origin/ frontend edit it(add his link) - ahmed magdy -
-                    { "{{action_url}}", $"{origin}/auth/forgetPassword?email={user.Email}&code={code}" }
-            }
-        );
+        var emailBody = EmailBodyBuilder.GenerateEmailBody("ForgetPassword", new Dictionary<string, string>
+    {
+        { "{{name}}", user.FirstName },
+        { "{{action_url}}", $"{origin}/auth/forgetPassword?email={user.Email}&code={code}" },
+        { "{{support_email}}", "bonex.ai.team@gmail.com" }
+    });
 
-        await _emailSender.SendEmailAsync(user.Email!, "✅ BoneX: Change Password", emailBody);
+        await _emailSender.SendEmailAsync(user.Email!, "BoneX: Reset Password", emailBody);
 
     }
+
+
 
 }

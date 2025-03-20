@@ -6,6 +6,8 @@ public record AuthResponse
     string? Email,
     string FirstName,
     string LastName,
+    Gender Gender,
+    string Role,
     string Token,
     int ExpiresIn,
     string RefreshToken,

@@ -1,11 +1,8 @@
-﻿using BoneX.Api.Authentication;
-using BoneX.Api.Errors;
-using BoneX.Api.Settings;
+﻿using BoneX.Api.Settings;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity.UI.Services;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using System.Text;
 
 namespace BoneX.Api;
@@ -24,14 +21,16 @@ public static class DependencyInjection
                 builder
                     .AllowAnyMethod()
                     .AllowAnyHeader()
-                    .WithOrigins(configuration.GetSection("AllowedOrigins").Get<string[]>()!);
+                    .AllowAnyOrigin();
+                //.WithOrigins(configuration.GetSection("AllowedOrigins").Get<string[]>()!);
             });
         });
 
         var connectionString = configuration.GetConnectionString("DefaultConnection") ??
             throw new InvalidOperationException("Connection string 'DefaultConnection' not found");
 
-        services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
+        services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString, x => x.UseNetTopologySuite()));
+
 
 
         services
@@ -40,12 +39,21 @@ public static class DependencyInjection
         .AddFluentValidationConfig()
         .AddAuthConfig(configuration);
 
+        // Add UserManager for Doctor & Patient
+        services.AddScoped<UserManager<Doctor>>();
+        services.AddScoped<UserManager<Patient>>();
+
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IEmailSender, EmailService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddScoped<IAppointmentService, AppointmentService>();
+        services.AddScoped<IDoctorService, DoctorService>();
+        services.AddScoped<IPatientService, PatientService>();
+        services.AddScoped<IXrayService, XrayService>();
 
-        services.AddExceptionHandler<GlobalExceptionHandler>();
-        services.AddProblemDetails();
+
+        //services.AddExceptionHandler<GlobalExceptionHandler>();
+        //services.AddProblemDetails();
 
         services.AddHttpContextAccessor();
 
@@ -58,7 +66,33 @@ public static class DependencyInjection
     {
         // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
         services.AddEndpointsApiExplorer();
-        services.AddSwaggerGen();
+        services.AddSwaggerGen(options =>
+        {
+            options.SwaggerDoc("v1", new OpenApiInfo { Title = "BoneX API", Version = "v1" });
+
+            //  Add JWT authentication support in Swagger
+            options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+            {
+                Name = "Authorization",
+                Type = SecuritySchemeType.Http,
+                Scheme = "Bearer",
+                BearerFormat = "JWT",
+                In = ParameterLocation.Header,
+                Description = "Enter 'Bearer {your_token}' in the text box below. Example: 'Bearer eyJhbGc...'"
+            });
+
+            // Ensure Swagger requires authentication
+            options.AddSecurityRequirement(new OpenApiSecurityRequirement
+            {
+                {
+                    new OpenApiSecurityScheme
+                    {
+                        Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+                    },
+                    new List<string>()
+                }
+            });
+        });
 
         return services;
     }
@@ -99,6 +133,16 @@ public static class DependencyInjection
             .AddEntityFrameworkStores<ApplicationDbContext>()
             .AddDefaultTokenProviders();
 
+        services.AddIdentityCore<Doctor>()
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
+
+        services.AddIdentityCore<Patient>()
+            .AddEntityFrameworkStores<ApplicationDbContext>()
+            .AddDefaultTokenProviders();
+
+
+
         services.AddAuthentication(options =>
         {
             options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -121,8 +165,13 @@ public static class DependencyInjection
 
         services.Configure<IdentityOptions>(options =>
         {
-            options.Password.RequiredLength = 8;
-            options.SignIn.RequireConfirmedEmail = true;
+            options.Password.RequireDigit = false;
+            options.Password.RequireLowercase = false;
+            options.Password.RequireUppercase = false;
+            options.Password.RequireNonAlphanumeric = false;
+
+            //options.Password.RequiredLength = 6;
+            options.SignIn.RequireConfirmedEmail = false;
             options.User.RequireUniqueEmail = true;
         });
         return services;

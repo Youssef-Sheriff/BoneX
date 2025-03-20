@@ -1,6 +1,4 @@
-﻿using static System.Runtime.InteropServices.JavaScript.JSType;
-
-namespace BoneX.Api.Abstraction;
+﻿namespace BoneX.Api.Abstraction;
 
 public class Result
 {
