@@ -48,7 +48,7 @@ public class AuthService(
             });
             await _userManager.UpdateAsync(user);
 
-            var response = new AuthResponse(user.Id, user.Email, user.FirstName, user.LastName, user.Gender, user.Role, token, expiresIn, refreshToken, refreshTokenExiration);
+            var response = new AuthResponse(user.Id, user.Email, user.FirstName, user.LastName,user.ProfilePicture, user.Gender, user.Role, token, expiresIn, refreshToken, refreshTokenExiration);
 
             return Result.Success(response);
         }
@@ -89,7 +89,7 @@ public class AuthService(
         });
         await _userManager.UpdateAsync(user);
 
-        var response = new AuthResponse(user.Id, user.Email, user.FirstName, user.LastName, user.Gender, user.Role, newToken, expiresIn, newRefreshToken, refreshTokenExiration);
+        var response = new AuthResponse(user.Id, user.Email, user.FirstName, user.LastName,user.ProfilePicture, user.Gender, user.Role, newToken, expiresIn, newRefreshToken, refreshTokenExiration);
 
         return Result.Success(response);
     }

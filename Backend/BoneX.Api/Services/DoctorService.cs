@@ -40,6 +40,9 @@ public class DoctorService(
             PhoneNumber = request.PhoneNumber,
             //ProfilePicture = request.ProfilePicture,
             Role = UserRoles.Doctor,
+            DateOfBirth = request.DateOfBirth,
+            Speciality = request.Speciality,
+            Brief = request.Brief,
             UniversityName = request.UniversityName,
             GraduationYear = request.GraduationYear,
             //DegreeCertificate = request.DegreeCertificate,
@@ -200,14 +203,34 @@ public class DoctorService(
         return Result.Success();
     }
 
-    public async Task<Result<List<UserProfileResponse>>> GetAllDoctorsAsync()
+    public async Task<Result<List<DoctorListResponse>>> GetAllDoctorsAsync()
     {
+        // First get the doctors with base information
         var doctors = await _userManager.Users
             .Where(x => x.Role == UserRoles.Doctor)
-            .ProjectToType<UserProfileResponse>()
             .ToListAsync();
 
-        return Result.Success(doctors);
+
+
+        // Create the response list
+        var response = doctors.Select(d => {
+            // Cast to Doctor type now that we're working with in-memory objects
+            var doctor = d as Doctor;
+
+
+
+            return new DoctorListResponse(
+                d.Id,
+                $"{d.FirstName} {d.LastName}",
+                doctor?.Speciality ?? string.Empty,
+                doctor?.Brief ?? string.Empty,
+                d.ProfilePicture ?? string.Empty
+            );
+        }).ToList();
+
+        return Result.Success(response);
+
+
     }
 
     public async Task<Result<DoctorProfileResponse>> GetDoctorProfileAsync(string doctorId, CancellationToken cancellationToken = default)
@@ -272,16 +295,6 @@ public class DoctorService(
         var completedAppointments = appointments.Count(a => a.Status == AppointmentStatus.Completed);
         var cancelledAppointments = appointments.Count(a => a.Status == AppointmentStatus.Cancelled);
 
-        // Calculate average rating if you have a rating system
-        // This assumes you have a Rating property in your Appointment entity
-        double averageRating = 0;
-        int ratedAppointments = appointments.Count(a => a.Rating.HasValue);
-        if (ratedAppointments > 0)
-        {
-            averageRating = appointments
-                .Where(a => a.Rating.HasValue)
-                .Average(a => a.Rating!.Value);
-        }
 
         // Group appointments by month for the last 6 months
         var startDate = DateTime.UtcNow.AddMonths(-6);
@@ -300,7 +313,6 @@ public class DoctorService(
             TotalAppointments: totalAppointments,
             CompletedAppointments: completedAppointments,
             CancelledAppointments: cancelledAppointments,
-            AverageRating: Math.Round(averageRating, 1),
             AppointmentsByMonth: appointmentsByMonth
         );
 

@@ -12,10 +12,10 @@ public class Doctor : ApplicationUser
     public string WorkplaceName { get; set; } = string.Empty;
     public List<string> AwardsOrRecognitions { get; set; } = [];
 
-    // new properties
     public string Brief { get; set; } = string.Empty;
     public string Award { get; set; } = string.Empty;
     public string AwardImage { get; set; } = string.Empty;
+    public string Speciality { get; set; } = string.Empty;
 
     public List<Appointment> Appointments { get; set; } = [];
 }

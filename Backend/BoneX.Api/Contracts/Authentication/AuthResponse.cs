@@ -6,6 +6,7 @@ public record AuthResponse
     string? Email,
     string FirstName,
     string LastName,
+    string? ProfilePicture,
     Gender Gender,
     string Role,
     string Token,

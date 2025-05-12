@@ -1,401 +1,503 @@
-﻿using BoneX.Api.Contracts.Appointments;
+using BoneX.Api.Contracts.Appointments;
+using BoneX.Api.Entities;
 using BoneX.Api.Errors;
 using BoneX.Api.Extensions;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI.Services;
 
 namespace BoneX.Api.Services;
 
 public class AppointmentService(ApplicationDbContext context,
-    IHttpContextAccessor httpContextAccessor,
-    ILogger<AppointmentService> logger) : IAppointmentService
+        UserManager<ApplicationUser> userManager,
+        IDoctorAvailabilityService availabilityService,
+        ILogger<AppointmentService> logger,
+        IEmailSender emailSender) : IAppointmentService
 {
     private readonly ApplicationDbContext _context = context;
-    private readonly IHttpContextAccessor _httpContextAccessor = httpContextAccessor;
     private readonly ILogger<AppointmentService> _logger = logger;
+    private readonly UserManager<ApplicationUser> _userManager = userManager;
+    private readonly IDoctorAvailabilityService _availabilityService = availabilityService;
+    private readonly IEmailSender _emailSender = emailSender;
 
-    public async Task<Result> CreateAppointmentAsync(CreateAppointmentRequest request)
+    public async Task<Result<AppointmentResponse>> CreateAppointmentAsync(string patientId, CreateAppointmentRequest request, CancellationToken cancellationToken = default)
     {
-        var patientId = _httpContextAccessor.HttpContext?.User.GetUserId();
+        var patient = await _userManager.FindByIdAsync(patientId);
+        if (patient == null || patient.Role != UserRoles.Patient)
+            return Result.Failure<AppointmentResponse>(UserErrors.Unauthorized);
 
-        if (string.IsNullOrEmpty(patientId))
-            return Result.Failure(AppointmentErrors.PatientNotAuthenticated);
+        var doctor = await _userManager.Users
+            .OfType<Doctor>()
+            .FirstOrDefaultAsync(d => d.Id == request.DoctorId, cancellationToken);
 
-        var patient = await _context.Patients.FindAsync(patientId);
+        if (doctor == null)
+            return Result.Failure<AppointmentResponse>(UserErrors.NotFound);
 
-        if (patient is null)
-            return Result.Failure(UserErrors.InvalidJwtToken);
+        // Check if the appointment time is available
+        var availableSlots = await _availabilityService.GetAvailableTimeSlotsAsync(doctor.Id, request.ScheduledTime.Date, cancellationToken);
+        if (availableSlots.IsFailure)
+            return Result.Failure<AppointmentResponse>(availableSlots.Error);
 
-        if (patient.Role != UserRoles.Patient)
-            return Result.Failure(AppointmentErrors.UnauthorizedAccess);
+        if (!availableSlots.Value.Any(slot => slot.Year == request.ScheduledTime.Year &&
+                                            slot.Month == request.ScheduledTime.Month &&
+                                            slot.Day == request.ScheduledTime.Day &&
+                                            slot.Hour == request.ScheduledTime.Hour &&
+                                            slot.Minute == request.ScheduledTime.Minute))
+        {
+            return Result.Failure<AppointmentResponse>(
+                new Error("Appointment.TimeNotAvailable", "The requested appointment time is not available", StatusCodes.Status400BadRequest));
+        }
 
+        // Calculate end time (assuming 30-minute appointments)
+        var endTime = request.ScheduledTime.AddMinutes(30);
 
-        // Check for rate limiting
-        var result = await EnforceAppointmentLimitsAsync(patientId);
-
-        if (!result.IsSuccess)
-            return result;
-
-        var doctor = await _context.Doctors.FindAsync(request.DoctorId);
-
-        if (doctor is null)
-            return Result.Failure(AppointmentErrors.DoctorNotFound);
-
-        //var isAvailable = await IsDoctorAvailable(request.DoctorId, request.ScheduledTime);
-
-        //if (!isAvailable)
-        //    return Result.Failure(AppointmentErrors.AppointmentTimeConflict);
-
+        // Create appointment
         var appointment = new Appointment
         {
-            DoctorId = request.DoctorId,
             PatientId = patientId,
+            DoctorId = doctor.Id,
             ScheduledTime = request.ScheduledTime,
+            EndTime = endTime,
             Status = AppointmentStatus.Scheduled,
-            Notes = request.Notes
+            // Generate a simple meeting link (in a real system, you might integrate with Zoom, Google Meet, etc.)
+            MeetingLink = $"https://meet.bonex.com/{Guid.NewGuid()}"
         };
 
-        await _context.AddAsync(appointment);
-        await _context.SaveChangesAsync();
+        _context.Appointments.Add(appointment);
+        await _context.SaveChangesAsync(cancellationToken);
 
-        return Result.Success(appointment.Id);
+        // Send confirmation emails
+        // ...
+
+        var feedbackResponse = new FeedbackResponse
+        (
+            FeedbackId: 0,
+            appointment.Id,
+            appointment.Patient.FirstName + " " + appointment.Patient.LastName,
+            appointment.Doctor.FirstName + " " + appointment.Doctor.LastName,
+            false,
+            false,
+            false,
+            false,
+            false,
+            0
+        );
+
+
+        return Result.Success(new AppointmentResponse(
+            appointment.Id,
+            appointment.DoctorId,
+            appointment.PatientId,
+            doctor.FirstName + " " + doctor.LastName,
+            patient.FirstName + " " + patient.LastName,
+            appointment.ScheduledTime,
+            appointment.EndTime,
+            appointment.Status,
+            appointment.CancellationReason,
+            appointment.MeetingLink,
+            feedbackResponse
+        ));
     }
 
-    public async Task<Result<List<AppointmentResponse>>> GetAppointmentsByDoctorAsync(string doctorId)
+    public async Task<Result<AppointmentResponse>> UpdateAppointmentAsync(string userId, int appointmentId, UpdateAppointmentRequest request, CancellationToken cancellationToken = default)
     {
-        var doctor = await _context.Doctors.FindAsync(doctorId);
-
-        if (doctor is null)
-            return Result.Failure<List<AppointmentResponse>>(AppointmentErrors.DoctorNotFound);
-
-        if (doctor.Role != UserRoles.Doctor)
-            return Result.Failure<List<AppointmentResponse>>(UserErrors.Unauthorized);
-
-        var appointments = await _context.Appointments
-            .AsNoTracking()
-            .Where(x => x.DoctorId == doctorId)
-            .Select(x => new AppointmentResponse
-            (
-                x.Id,
-                x.DoctorId,
-                x.PatientId,
-                x.ScheduledTime,
-                x.Notes,
-                x.Status
-            ))
-            .ToListAsync();
-
-        return Result.Success(appointments);
-    }
-
-    public async Task<Result<List<AppointmentResponse>>> GetAppointmentsByPatientAsync()
-    {
-        var patientId = _httpContextAccessor.HttpContext?.User.GetUserId();
-
-        if (string.IsNullOrEmpty(patientId))
-            return Result.Failure<List<AppointmentResponse>>(AppointmentErrors.PatientNotAuthenticated);
-
-        var patient = await _context.Patients.FindAsync(patientId);
-
-        if (patient is null)
-            return Result.Failure<List<AppointmentResponse>>(UserErrors.InvalidJwtToken);
-
-        if (patient.Role != UserRoles.Patient)
-            return Result.Failure<List<AppointmentResponse>>(UserErrors.Unauthorized);
-
-        var appointments = await _context.Appointments
-            .AsNoTracking()
-            .Where(x => x.PatientId == patientId)
-            .Include(x => x.Doctor)
-            .Select(x => new AppointmentResponse
-            (
-                x.Id,
-                x.DoctorId,
-                x.PatientId,
-                x.ScheduledTime,
-                x.Notes,
-                x.Status
-            ))
-            .ToListAsync();
-
-        return Result.Success(appointments);
-    }
-
-    public async Task<Result> CancelAppointmentAsync(int appointmentId, CancelAppointmentRequest request)
-    {
-        var userId = _httpContextAccessor.HttpContext?.User.GetUserId();
-
-        if (string.IsNullOrEmpty(userId))
-            return Result.Failure(AppointmentErrors.PatientNotAuthenticated);
-
-        var appointment = await _context.Appointments.FindAsync(appointmentId);
-
-        if (appointment is null)
-            return Result.Failure(AppointmentErrors.AppointmentNotFound);
-
-        if (appointment.PatientId != userId && appointment.DoctorId != userId)
-            return Result.Failure(AppointmentErrors.UnauthorizedAccess);
-
-        appointment.Status = AppointmentStatus.Cancelled;
-        appointment.CancellationReason = request.Reason;
-        appointment.LastUpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        return Result.Success();
-    }
-
-    public async Task<Result> RescheduleAppointmentAsync(int appointmentId, RescheduleAppointmentRequest request)
-    {
-        var userId = _httpContextAccessor.HttpContext?.User.GetUserId();
-
-        if (string.IsNullOrEmpty(userId))
-            return Result.Failure(AppointmentErrors.PatientNotAuthenticated);
-
-        var appointment = await _context.Appointments.FindAsync(appointmentId);
-
-        if (appointment is null)
-            return Result.Failure(AppointmentErrors.AppointmentNotFound);
-
-        if (appointment.PatientId != userId && appointment.DoctorId != userId)
-            return Result.Failure(AppointmentErrors.UnauthorizedAccess);
-
-        if (appointment.Status == AppointmentStatus.Cancelled)
-            return Result.Failure(AppointmentErrors.AppointmentAlreadyCancelled);
-
-        if (appointment.Status == AppointmentStatus.Completed)
-            return Result.Failure(AppointmentErrors.AppointmentAlreadyCompleted);
-
-        //// Check doctor's availability
-        //var isAvailable = await IsDoctorAvailable(appointment.DoctorId, request.NewTime);
-
-        //if (!isAvailable)
-        //    return Result.Failure(AppointmentErrors.AppointmentTimeConflict);
-
-        // Update appointment time
-        if (appointment.RescheduledTime is null)
-        {
-            appointment.RescheduledTime = request.NewTime;
-        }
-        else
-        {
-            // If already rescheduled once, update the ScheduledTime instead
-            appointment.ScheduledTime = appointment.RescheduledTime.Value;
-            appointment.RescheduledTime = request.NewTime;
-        }
-
-        appointment.Status = AppointmentStatus.Scheduled;
-        appointment.LastUpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        return Result.Success();
-    }
-
-    public async Task<Result> CreateFollowUpAsync(int appointmentId, CreateFollowUpRequest request)
-    {
-        var userId = _httpContextAccessor.HttpContext?.User.GetUserId();
-
-        if (string.IsNullOrEmpty(userId))
-            return Result.Failure(AppointmentErrors.UnauthorizedAccess);
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+            return Result.Failure<AppointmentResponse>(UserErrors.Unauthorized);
 
         var appointment = await _context.Appointments
             .Include(a => a.Doctor)
-            .FirstOrDefaultAsync(a => a.Id == appointmentId);
+            .Include(a => a.Patient)
+            .FirstOrDefaultAsync(a => a.Id == appointmentId, cancellationToken);
 
         if (appointment == null)
-            return Result.Failure(AppointmentErrors.AppointmentNotFound);
+            return Result.Failure<AppointmentResponse>(
+                new Error("Appointment.NotFound", "Appointment not found", StatusCodes.Status404NotFound));
 
-        if (appointment.DoctorId != userId)
-            return Result.Failure(AppointmentErrors.UnauthorizedAccess);
+        // Verify the user is either the patient or the doctor
+        if (appointment.PatientId != userId && appointment.DoctorId != userId)
+            return Result.Failure<AppointmentResponse>(UserErrors.Unauthorized);
 
-        // Only allow follow-ups for completed appointments
-        if (appointment.Status != AppointmentStatus.Completed)
-            return Result.Failure(AppointmentErrors.AppointmentNotCompleted);
+        // Check if appointment is already completed or cancelled
+        if (appointment.Status == AppointmentStatus.Completed || appointment.Status == AppointmentStatus.Cancelled)
+            return Result.Failure<AppointmentResponse>(
+                new Error("Appointment.CannotUpdate", "Cannot update completed or cancelled appointments", StatusCodes.Status400BadRequest));
 
-        var followUp = new AppointmentFollowUp
+        // Update appointment fields
+        if (request.ScheduledTime.HasValue)
         {
-            AppointmentId = appointmentId,
-            Notes = request.Notes,
-            FollowUpDate = request.FollowUpDate
-        };
+            // Check if new time is available
+            var availableSlots = await _availabilityService.GetAvailableTimeSlotsAsync(
+                appointment.DoctorId, request.ScheduledTime.Value.Date, cancellationToken);
 
-        await _context.AddAsync(followUp);
-        await _context.SaveChangesAsync();
+            if (availableSlots.IsFailure)
+                return Result.Failure<AppointmentResponse>(availableSlots.Error);
+
+            bool isTimeAvailable = availableSlots.Value.Any(slot =>
+                slot.Year == request.ScheduledTime.Value.Year &&
+                slot.Month == request.ScheduledTime.Value.Month &&
+                slot.Day == request.ScheduledTime.Value.Day &&
+                slot.Hour == request.ScheduledTime.Value.Hour &&
+                slot.Minute == request.ScheduledTime.Value.Minute);
+
+            if (!isTimeAvailable)
+            {
+                return Result.Failure<AppointmentResponse>(
+                    new Error("Appointment.TimeNotAvailable", "The requested appointment time is not available", StatusCodes.Status400BadRequest));
+            }
+
+            appointment.ScheduledTime = request.ScheduledTime.Value;
+            appointment.EndTime = request.ScheduledTime.Value.AddMinutes(30);
+            appointment.Status = AppointmentStatus.Rescheduled;
+        }
+
+        
+            // For cancellation, require a reason
+            if (request.Status == AppointmentStatus.Cancelled && string.IsNullOrEmpty(request.CancellationReason))
+            {
+                return Result.Failure<AppointmentResponse>(
+                    new Error("Appointment.CancellationReasonRequired", "Cancellation reason is required", StatusCodes.Status400BadRequest));
+            }
+
+            appointment.Status = request.Status!;
+
+            if (request.Status == AppointmentStatus.Cancelled)
+                appointment.CancellationReason = request.CancellationReason;
+        
+
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        // Notify relevant parties of the update
+
+        var feedbackResponse = new FeedbackResponse
+        (
+            FeedbackId: 0,
+            appointment.Id,
+            appointment.Patient.FirstName + " " + appointment.Patient.LastName,
+            appointment.Doctor.FirstName + " " + appointment.Doctor.LastName,
+            false,
+            false,
+            false,
+            false,
+            false,
+            0
+        );
+
+        return Result.Success(new AppointmentResponse(
+            appointment.Id,
+            appointment.DoctorId,
+            appointment.PatientId,
+            appointment.Doctor.FirstName + " " + appointment.Doctor.LastName,
+            appointment.Patient.FirstName + " " + appointment.Patient.LastName,
+            appointment.ScheduledTime,
+            appointment.EndTime,
+            appointment.Status,
+            appointment.CancellationReason,
+            appointment.MeetingLink,
+            feedbackResponse
+        ));
+    }
+
+    public async Task<Result<AppointmentResponse>> GetAppointmentByIdAsync(string userId, int appointmentId, CancellationToken cancellationToken = default)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+            return Result.Failure<AppointmentResponse>(UserErrors.Unauthorized);
+
+        var appointment = await _context.Appointments
+            .Include(a => a.Doctor)
+            .Include(a => a.Patient)
+            .Include(a => a.Feedback)
+            .FirstOrDefaultAsync(a => a.Id == appointmentId, cancellationToken);
+
+        if (appointment == null)
+            return Result.Failure<AppointmentResponse>(
+                new Error("Appointment.NotFound", "Appointment not found", StatusCodes.Status404NotFound));
+
+        // Verify the user is either the patient or the doctor
+        if (appointment.PatientId != userId && appointment.DoctorId != userId)
+            return Result.Failure<AppointmentResponse>(UserErrors.Unauthorized);
+
+       var feedbackResponse = await _context.Feedbacks
+            .Where(f => f.AppointmentId == appointment.Id)
+            .Select(f => new FeedbackResponse(
+                f.Id,
+                f.AppointmentId,
+                f.Appointment.Patient.FirstName + " " + f.Appointment.Patient.LastName,
+                f.Appointment.Doctor.FirstName + " " + f.Appointment.Doctor.LastName,
+                f.MedicalAttentionGiven,
+                f.WasGoodListener,
+                f.WillContinueTreatment,
+                f.ExpectationsMet,
+                f.RecommendDoctor,
+                f.Rating
+            ))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return Result.Success(new AppointmentResponse(
+            appointment.Id,
+            appointment.DoctorId,
+            appointment.PatientId,
+            appointment.Doctor.FirstName + " " + appointment.Doctor.LastName,
+            appointment.Patient.FirstName + " " + appointment.Patient.LastName,
+            appointment.ScheduledTime,
+            appointment.EndTime,
+            appointment.Status,
+            appointment.CancellationReason,
+            appointment.MeetingLink,
+            feedbackResponse
+        ));
+    }
+
+    public async Task<Result<List<AppointmentResponse>>> GetUserAppointmentsAsync(string userId, bool includePast = false, CancellationToken cancellationToken = default)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+            return Result.Failure<List<AppointmentResponse>>(UserErrors.Unauthorized);
+
+        var query = _context.Appointments
+            .Include(a => a.Doctor)
+            .Include(a => a.Patient)
+            .Include(a => a.Feedback)
+            .Where(a => a.PatientId == userId || a.DoctorId == userId);
+
+        // Filter out past appointments unless specifically requested
+        if (!includePast)
+            query = query.Where(a => a.ScheduledTime >= DateTime.UtcNow || a.Status == AppointmentStatus.Scheduled);
+
+        var appointments = await query.ToListAsync(cancellationToken);
+
+        if (appointments == null || !appointments.Any())
+            return Result.Failure<List<AppointmentResponse>>(
+                new Error("Appointment.NotFound", "No appointments found for the user", StatusCodes.Status404NotFound));
+
+        var response = appointments.Select(a =>
+        {
+            var feedback = a.Feedback == null ? null : new FeedbackResponse(
+                a.Feedback.Id,
+                a.Id,
+                a.Patient.FirstName + " " + a.Patient.LastName,
+                a.Doctor.FirstName + " " + a.Doctor.LastName,
+                a.Feedback.MedicalAttentionGiven,
+                a.Feedback.WasGoodListener,
+                a.Feedback.WillContinueTreatment,
+                a.Feedback.ExpectationsMet,
+                a.Feedback.RecommendDoctor,
+                a.Feedback.Rating
+            );
+
+            return new AppointmentResponse(
+                a.Id,
+                a.DoctorId,
+                a.PatientId,
+                a.Doctor.FirstName + " " + a.Doctor.LastName,
+                a.Patient.FirstName + " " + a.Patient.LastName,
+                a.ScheduledTime,
+                a.EndTime,
+                a.Status,
+                a.CancellationReason,
+                a.MeetingLink,
+                feedback
+            );
+        }).ToList();
+
+        return Result.Success(response);
+    }
+
+    public async Task<Result<List<DoctorAppointmentResponse>>> GetDoctorAppointmentsAsync(string doctorId, DateTime? date = null, CancellationToken cancellationToken = default)
+    {
+        var doctor = await _userManager.Users
+            .OfType<Doctor>()
+            .FirstOrDefaultAsync(d => d.Id == doctorId, cancellationToken);
+
+        if (doctor == null)
+            return Result.Failure<List<DoctorAppointmentResponse>>(UserErrors.NotFound);
+
+        var query = _context.Appointments
+            .Include(a => a.Patient)
+            .Where(a => a.DoctorId == doctorId);
+
+        // Filter by date if provided
+        if (date.HasValue)
+            query = query.Where(a => a.ScheduledTime.Date == date.Value.Date);
+
+        var appointments = await query.ToListAsync(cancellationToken);
+
+        if (appointments == null || !appointments.Any())
+            return Result.Failure<List<DoctorAppointmentResponse>>(
+                new Error("Appointment.NotFound", "No appointments found for the doctor", StatusCodes.Status404NotFound));
+
+        var feedbackResponse = await _context.Feedbacks
+            .Where(f => f.AppointmentId == appointments.First().Id)
+            .Select(f => new FeedbackResponse(
+                f.Id,
+                f.AppointmentId,
+                f.Appointment.Patient.FirstName + " " + f.Appointment.Patient.LastName,
+                f.Appointment.Doctor.FirstName + " " + f.Appointment.Doctor.LastName,
+                f.MedicalAttentionGiven,
+                f.WasGoodListener,
+                f.WillContinueTreatment,
+                f.ExpectationsMet,
+                f.RecommendDoctor,
+                f.Rating
+            ))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var response = appointments.Select(a => new DoctorAppointmentResponse(
+            a.Id,
+            a.PatientId,
+            a.Patient.FirstName + " " + a.Patient.LastName,
+            a.Patient.ProfilePicture,
+            a.Patient.Gender,
+            a.Patient.DateOfBirth,
+            "Online",
+            a.ScheduledTime,
+            a.EndTime,
+            a.Status,
+            a.CancellationReason,
+            a.MeetingLink,
+            feedbackResponse
+        )).ToList();
+
+        return Result.Success(response);
+    }
+
+    public async Task<Result> CancelAppointmentAsync(string userId, int appointmentId, string cancellationReason, CancellationToken cancellationToken = default)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+            return Result.Failure(UserErrors.Unauthorized);
+
+        var appointment = await _context.Appointments
+            .Include(a => a.Doctor)
+            .Include(a => a.Patient)
+            .FirstOrDefaultAsync(a => a.Id == appointmentId, cancellationToken);
+
+        if (appointment == null)
+            return Result.Failure(
+                new Error("Appointment.NotFound", "Appointment not found", StatusCodes.Status404NotFound));
+
+        // Verify the user is either the patient or the doctor
+        if (appointment.PatientId != userId && appointment.DoctorId != userId)
+            return Result.Failure(UserErrors.Unauthorized);
+
+        // Check if appointment is already completed or cancelled
+        if (appointment.Status == AppointmentStatus.Completed || appointment.Status == AppointmentStatus.Cancelled)
+            return Result.Failure(
+                new Error("Appointment.AlreadyCompleted", "Cannot cancel completed or already cancelled appointments", StatusCodes.Status400BadRequest));
+
+        // Update appointment status
+        appointment.Status = AppointmentStatus.Cancelled;
+        appointment.CancellationReason = cancellationReason;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        // Notify relevant parties of the cancellation
 
         return Result.Success();
     }
 
-    public async Task<Result<DoctorAppointmentStats>> GetDoctorAppointmentStatsAsync(string doctorId)
+    public async Task<Result<List<DateTime>>> GetDoctorAvailableTimeSlotsAsync(string doctorId, DateTime date, CancellationToken cancellationToken = default)
     {
-        var doctor = await _context.Doctors.FindAsync(doctorId);
+        return await _availabilityService.GetAvailableTimeSlotsAsync(doctorId, date, cancellationToken);
+    }
 
+    public async Task<Result<List<string>>> GetFormattedAvailableSlotsAsync(string doctorId, DateTime date, CancellationToken cancellationToken = default)
+    {
+        var availableSlotsResult = await _availabilityService.GetAvailableTimeSlotsAsync(doctorId, date, cancellationToken);
+
+        if (availableSlotsResult.IsFailure)
+            return Result.Failure<List<string>>(availableSlotsResult.Error);
+
+        var formatted = availableSlotsResult.Value!
+            .OrderBy(t => t)
+            .Select(slot => $"{slot:HH:mm} to {slot.AddMinutes(30):HH:mm}")
+            .ToList();
+
+        return Result.Success(formatted);
+    }
+
+    public async Task<Result<Dictionary<string, int>>> GetDoctorAppointmentStatsAsync(string doctorId, CancellationToken cancellationToken = default)
+    {
+        var doctor = await _userManager.Users.OfType<Doctor>().FirstOrDefaultAsync(d => d.Id == doctorId, cancellationToken);
         if (doctor == null)
-            return Result.Failure<DoctorAppointmentStats>(AppointmentErrors.DoctorNotFound);
+            return Result.Failure<Dictionary<string, int>>(UserErrors.NotFound);
 
-        var today = DateTime.UtcNow.Date;
-        var startOfWeek = today.AddDays(-(int)today.DayOfWeek);
-        var endOfWeek = startOfWeek.AddDays(7);
+        var appointments = await _context.Appointments
+            .Where(a => a.DoctorId == doctorId)
+            .ToListAsync(cancellationToken);
 
-        var stats = new DoctorAppointmentStats
-        {
-            TotalAppointments = await _context.Appointments
-                .CountAsync(a => a.DoctorId == doctorId),
-
-            CompletedAppointments = await _context.Appointments
-                .CountAsync(a => a.DoctorId == doctorId &&
-                                a.Status == AppointmentStatus.Completed),
-
-            CancelledAppointments = await _context.Appointments
-                .CountAsync(a => a.DoctorId == doctorId &&
-                                a.Status == AppointmentStatus.Cancelled),
-
-            TodayAppointments = await _context.Appointments
-                .CountAsync(a => a.DoctorId == doctorId &&
-                                 a.ScheduledTime.Date == today),
-
-            ThisWeekAppointments = await _context.Appointments
-                .CountAsync(a => a.DoctorId == doctorId &&
-                                a.ScheduledTime >= startOfWeek &&
-                                a.ScheduledTime < endOfWeek)
-        };
+        var stats = appointments
+            .GroupBy(a => a.Status)
+            .ToDictionary(g => g.Key, g => g.Count());
 
         return Result.Success(stats);
     }
 
-    public async Task<Result> AddAppointmentFeedbackAsync(int appointmentId, AddFeedbackRequest request)
+    public async Task<Result> SubmitFeedbackAsync(FeedbackRequest request, string patientId)
     {
-        var patientId = _httpContextAccessor.HttpContext?.User.GetUserId();
-
-        if (string.IsNullOrEmpty(patientId))
-            return Result.Failure(AppointmentErrors.PatientNotAuthenticated);
-
         var appointment = await _context.Appointments
-            .FirstOrDefaultAsync(a => a.Id == appointmentId);
+            .FirstOrDefaultAsync(a => a.Id == request.AppointmentId && a.PatientId == patientId);
 
         if (appointment == null)
-            return Result.Failure(AppointmentErrors.AppointmentNotFound);
-
-        if (appointment.PatientId != patientId)
-            return Result.Failure(AppointmentErrors.UnauthorizedAccess);
-
-        if (appointment.Status != AppointmentStatus.Completed)
-            return Result.Failure(AppointmentErrors.AppointmentNotCompleted);
-
-        // Check if feedback already exists
-        var existingFeedback = await _context.AppointmentFeedbacks
-            .AnyAsync(f => f.AppointmentId == appointmentId);
-
-        if (existingFeedback)
-            return Result.Failure(AppointmentErrors.FeedbackAlreadySubmitted);
-
-        // Validate rating
-        if (request.Rating < 1 || request.Rating > 5)
-            return Result.Failure(new Error(
-                "Appointment.InvalidRating",
-                "Rating must be between 1 and 5",
-                StatusCodes.Status400BadRequest));
-
-        var feedback = new AppointmentFeedback
         {
-            AppointmentId = appointmentId,
-            Rating = request.Rating,
-            Comments = request.Comments
+            return Result.Failure(
+                new Error("Feedback.InvalidAppointment", "You can only submit feedback for your own completed appointments.", StatusCodes.Status400BadRequest)
+            );
+        }
+
+        // Optional: check if feedback already exists
+        bool alreadyExists = await _context.Feedbacks
+            .AnyAsync(f => f.AppointmentId == request.AppointmentId);
+
+        if (alreadyExists)
+        {
+            return Result.Failure(
+                new Error("Feedback.AlreadySubmitted", "Feedback has already been submitted for this appointment.", StatusCodes.Status400BadRequest)
+            );
+        }
+
+        var feedback = new Feedback
+        {
+            AppointmentId = request.AppointmentId,
+            PatientId = patientId,
+            MedicalAttentionGiven = request.MedicalAttentionGiven,
+            WasGoodListener = request.WasGoodListener,
+            WillContinueTreatment = request.WillContinueTreatment,
+            ExpectationsMet = request.ExpectationsMet,
+            RecommendDoctor = request.RecommendDoctor,
+            Rating = request.Rating
         };
 
-        await _context.AddAsync(feedback);
+        // Associate feedback with appointment
+        appointment.Feedback = feedback;
 
-        appointment.Rating = request.Rating;
-
+        _context.Feedbacks.Add(feedback);
         await _context.SaveChangesAsync();
 
         return Result.Success();
     }
 
-    public async Task<Result> CompleteAppointmentAsync(int appointmentId, CompleteAppointmentRequest request)
+    public async Task<Result<List<FeedbackResponse>>> GetFeedbacksAsync()
     {
-        var userId = _httpContextAccessor.HttpContext?.User.GetUserId();
-
-        if (string.IsNullOrEmpty(userId))
-            return Result.Failure(AppointmentErrors.UnauthorizedAccess);
-
-        var appointment = await _context.Appointments.FindAsync(appointmentId);
-
-        if (appointment == null)
-            return Result.Failure(AppointmentErrors.AppointmentNotFound);
-
-        if (appointment.DoctorId != userId)
-            return Result.Failure(AppointmentErrors.UnauthorizedAccess);
-
-        if (appointment.Status != AppointmentStatus.Scheduled)
-            return Result.Failure(AppointmentErrors.AppointmentNotScheduled);
-
-        if (appointment.Status == AppointmentStatus.Completed)
-            return Result.Failure(AppointmentErrors.AppointmentAlreadyCompleted);
-
-        appointment.Status = AppointmentStatus.Completed;
-        appointment.CompletedAt = DateTime.UtcNow;
-        appointment.DiagnosisNotes = request.DiagnosisNotes;
-        appointment.TreatmentPlan = request.TreatmentPlan;
-        appointment.Prescription = request.Prescription;
-        appointment.HasFollowUp = request.HasFollowUp;
-        appointment.LastUpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        // Request feedback from patient
-        if (request.RequestFeedback)
-        {
-            appointment.IsFeedbackRequested = true;
-            await _context.SaveChangesAsync();
-        }
-
-        return Result.Success();
-    }
-
-    private async Task<bool> IsDoctorAvailable(string doctorId, DateTime appointmentTime)
-    {
-        var dayOfWeek = appointmentTime.DayOfWeek;
-        var timeOfDay = TimeOnly.FromDateTime(appointmentTime);
-
-        // Check if doctor is scheduled to work at this time
-        var availability = await _context.DoctorAvailabilities
-            .Where(a => a.DoctorId == doctorId &&
-                        a.DayOfWeek == dayOfWeek &&
-                        a.StartTime <= timeOfDay &&
-                        a.EndTime >= timeOfDay &&
-                        a.IsAvailable)
-            .AnyAsync();
-
-        if (!availability)
-            return false;
-
-        // Check for conflicts with existing appointments
-        var existingAppointment = await _context.Appointments
-            .Where(a => a.DoctorId == doctorId &&
-                        a.Status != AppointmentStatus.Cancelled &&
-                        (a.RescheduledTime ?? a.ScheduledTime) <= appointmentTime.AddMinutes(30) &&
-                        (a.RescheduledTime ?? a.ScheduledTime).AddMinutes(30) >= appointmentTime)
-            .AnyAsync();
-
-        return !existingAppointment;
-    }
-
-    private async Task<Result> EnforceAppointmentLimitsAsync(string patientId)
-    {
-        var recentAppointments = await _context.Appointments
-            .CountAsync(a => a.PatientId == patientId &&
-                             a.ScheduledTime > DateTime.UtcNow &&
-                             a.Status == AppointmentStatus.Scheduled);
-
-        if (recentAppointments >= 3)
-        {
-            _logger.LogWarning("User {PatientId} exceeded max pending appointments.", patientId);
-
-            return Result.Failure(new Error(
-                    "Appointment.TooManyPendingAppointments",
-                    "You cannot have more than 3 pending appointments",
-                    StatusCodes.Status400BadRequest));
-        }
-
-        return Result.Success();
-    }
+        var feedbacks = await _context.Feedbacks
+            .Include(f => f.Appointment)
+            .ThenInclude(a => a.Patient)
+            .Include(f => f.Appointment)
+            .ThenInclude(a => a.Doctor)
+            .Select(f => new FeedbackResponse(
+                f.Id,
+                f.AppointmentId,
+                f.Appointment.Patient.FirstName + " " + f.Appointment.Patient.LastName,
+                f.Appointment.Doctor.FirstName + " " + f.Appointment.Doctor.LastName,
+                f.MedicalAttentionGiven,
+                f.WasGoodListener,
+                f.WillContinueTreatment,
+                f.ExpectationsMet,
+                f.RecommendDoctor,
+                f.Rating
+            ))
+            .ToListAsync();
+        return Result.Success(feedbacks);
+    }     
 }

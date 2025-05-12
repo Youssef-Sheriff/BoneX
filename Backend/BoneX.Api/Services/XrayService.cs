@@ -240,7 +240,7 @@ public class XrayService(ApplicationDbContext context,
             formContent.Add(fileContent, "file", Path.GetFileName(imagePath));
 
             // Call the Flask API for prediction
-            var response = await httpClient.PostAsync("https://bonex-ray-production.up.railway.app/predict", formContent);
+            var response = await httpClient.PostAsync("http://164.90.223.123:5000/predict", formContent);
 
             if (response.IsSuccessStatusCode)
             {

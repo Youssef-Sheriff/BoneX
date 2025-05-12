@@ -1,6 +1,7 @@
 ﻿namespace BoneX.Api.Contracts.Doctor;
 
 public record DoctorRegisterRequest(
+     // basic information
     string Email,
     string Password,
     string FirstName,
@@ -8,17 +9,27 @@ public record DoctorRegisterRequest(
     DateOnly DateOfBirth,
     Gender Gender,
     string PhoneNumber,
-    IFormFile ProfilePicture,
-    IFormFile IdPhoto,
-    double Latitude,
-    double Longitude,
+
+    // professional information
+    string Speciality,
     string UniversityName,
     int GraduationYear,
     int YearsOfExperience,
     string ConsultationHours,
     double ConsultationFees,
     string WorkplaceName,
+    string Brief,
+
+    // location
+    double Latitude,
+    double Longitude,
+
+    // Required files
+    IFormFile ProfilePicture,
+    IFormFile IdPhoto,
     IFormFile DegreeCertificate,
-    IFormFile? AdditionalCertification,
-    List<IFormFile>? AwardsOrRecognitions
+
+    // Optional fields 
+    IFormFile? AdditionalCertification = null,
+    List<IFormFile>? AwardsOrRecognitions = null
 );

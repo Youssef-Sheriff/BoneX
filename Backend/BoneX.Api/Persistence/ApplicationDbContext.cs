@@ -11,8 +11,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<XrayImage> XrayImages { get; set; } = null!;
     public DbSet<DoctorReview> DoctorReviews { get; set; } = null!;
     public DbSet<DoctorAvailability> DoctorAvailabilities { get; set; } = null!;
-    public DbSet<AppointmentFeedback> AppointmentFeedbacks { get; set; } = null!;
 
+    public DbSet<Feedback> Feedbacks { get; set; } = null!;
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());

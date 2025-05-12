@@ -74,23 +74,23 @@ public class DoctorController(IDoctorService doctorService) : ControllerBase
         return Ok(result.Value);
     }
 
-    [HttpGet("statistics")]
-    //[Authorize(Roles = UserRoles.Doctor)]
-    public async Task<IActionResult> GetStatistics(CancellationToken cancellationToken)
-    {
-        var userId = User.GetUserId();
-        if (userId == null)
-            return Unauthorized();
+       //[HttpGet("statistics")]
+    ////[Authorize(Roles = UserRoles.Doctor)]
+    //public async Task<IActionResult> GetStatistics(CancellationToken cancellationToken)
+    //{
+    //    var userId = User.GetUserId();
+    //    if (userId == null)
+    //        return Unauthorized();
 
-        var result = await _doctorService.GetDoctorStatisticsAsync(userId, cancellationToken);
+    //    var result = await _doctorService.GetDoctorStatisticsAsync(userId, cancellationToken);
 
-        return result.IsSuccess ? Ok(result.Value) : result.ToProblem();
+    //    return result.IsSuccess ? Ok(result.Value) : result.ToProblem();
 
-        //if (result.IsFailure)
-        //    return BadRequest(result.Error);
+    //    //if (result.IsFailure)
+    //    //    return BadRequest(result.Error);
 
-        //return Ok(result.Value);
-    }
+    //    //return Ok(result.Value);
+    //}
 
     //[HttpGet("patients")]
     //[Authorize(Roles = UserRoles.Doctor)]

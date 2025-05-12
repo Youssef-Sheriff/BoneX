@@ -7,7 +7,8 @@ public interface IDoctorService
 {
     Task<Result> RegisterDoctorAsync(DoctorRegisterRequest request, CancellationToken cancellationToken = default);
     Task<Result> UpdateDoctorProfileAsync(string doctorId, UpdateDoctorProfileRequest request, CancellationToken cancellationToken = default);
-    Task<Result<List<UserProfileResponse>>> GetAllDoctorsAsync();
+    Task<Result<List<DoctorListResponse>>> GetAllDoctorsAsync();
     Task<Result<DoctorProfileResponse>> GetDoctorProfileAsync(string doctorId, CancellationToken cancellationToken = default);
     Task<Result<DoctorStatisticsResponse>> GetDoctorStatisticsAsync(string doctorId, CancellationToken cancellationToken = default);
+
 }

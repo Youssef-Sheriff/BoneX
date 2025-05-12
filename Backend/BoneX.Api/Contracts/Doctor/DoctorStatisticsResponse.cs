@@ -5,7 +5,6 @@ public record DoctorStatisticsResponse(
     int TotalAppointments,
     int CompletedAppointments,
     int CancelledAppointments,
-    double AverageRating,
     List<AppointmentsByMonth> AppointmentsByMonth
 );
 

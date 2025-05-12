@@ -18,6 +18,7 @@ public class DoctorRegisterRequestValidator : AbstractValidator<DoctorRegisterRe
         RuleFor(x => x.WorkplaceName).NotEmpty();
         RuleFor(x => x.Latitude).NotEmpty();
         RuleFor(x => x.Longitude).NotEmpty();
+        RuleFor(x => x.Speciality).NotEmpty();
 
         RuleFor(x => x.ProfilePicture)
             .NotNull()

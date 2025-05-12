@@ -22,7 +22,6 @@ public static class DependencyInjection
                     .AllowAnyMethod()
                     .AllowAnyHeader()
                     .AllowAnyOrigin();
-                //.WithOrigins(configuration.GetSection("AllowedOrigins").Get<string[]>()!);
             });
         });
 
@@ -50,6 +49,9 @@ public static class DependencyInjection
         services.AddScoped<IDoctorService, DoctorService>();
         services.AddScoped<IPatientService, PatientService>();
         services.AddScoped<IXrayService, XrayService>();
+        services.AddScoped<IDoctorAvailabilityService, DoctorAvailabilityService>();
+        services.AddScoped<IFaceVerificationService, FaceVerificationService>();
+
 
 
         //services.AddExceptionHandler<GlobalExceptionHandler>();
