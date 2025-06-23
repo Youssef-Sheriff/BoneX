@@ -15,6 +15,8 @@ public class Appointment
     // Navigation properties
     public Doctor Doctor { get; set; } = null!;
     public Patient Patient { get; set; } = null!;
+
+    public AppointmentReport? Report { get; set; }
 }
 
 public static class AppointmentStatus {

@@ -249,11 +249,11 @@ public class AppointmentService(ApplicationDbContext context,
         ));
     }
 
-    public async Task<Result<List<AppointmentResponse>>> GetUserAppointmentsAsync(string userId, bool includePast = false, CancellationToken cancellationToken = default)
+    public async Task<Result<List<DoctorAppointmentResponse>>> GetUserAppointmentsAsync(string userId, bool includePast = false, CancellationToken cancellationToken = default)
     {
         var user = await _userManager.FindByIdAsync(userId);
         if (user == null)
-            return Result.Failure<List<AppointmentResponse>>(UserErrors.Unauthorized);
+            return Result.Failure<List<DoctorAppointmentResponse>>(UserErrors.Unauthorized);
 
         var query = _context.Appointments
             .Include(a => a.Doctor)
@@ -268,40 +268,75 @@ public class AppointmentService(ApplicationDbContext context,
         var appointments = await query.ToListAsync(cancellationToken);
 
         if (appointments == null || !appointments.Any())
-            return Result.Failure<List<AppointmentResponse>>(
+            return Result.Failure<List<DoctorAppointmentResponse>>(
                 new Error("Appointment.NotFound", "No appointments found for the user", StatusCodes.Status404NotFound));
 
-        var response = appointments.Select(a =>
-        {
-            var feedback = a.Feedback == null ? null : new FeedbackResponse(
-                a.Feedback.Id,
-                a.Id,
-                a.Patient.FirstName + " " + a.Patient.LastName,
-                a.Doctor.FirstName + " " + a.Doctor.LastName,
-                a.Feedback.MedicalAttentionGiven,
-                a.Feedback.WasGoodListener,
-                a.Feedback.WillContinueTreatment,
-                a.Feedback.ExpectationsMet,
-                a.Feedback.RecommendDoctor,
-                a.Feedback.Rating
-            );
+        var feedbackResponse = await _context.Feedbacks
+            .Where(f => f.AppointmentId == appointments.First().Id)
+            .Select(f => new FeedbackResponse(
+                f.Id,
+                f.AppointmentId,
+                f.Appointment.Patient.FirstName + " " + f.Appointment.Patient.LastName,
+                f.Appointment.Doctor.FirstName + " " + f.Appointment.Doctor.LastName,
+                f.MedicalAttentionGiven,
+                f.WasGoodListener,
+                f.WillContinueTreatment,
+                f.ExpectationsMet,
+                f.RecommendDoctor,
+                f.Rating
+            ))
+            .FirstOrDefaultAsync(cancellationToken);
 
-            return new AppointmentResponse(
-                a.Id,
-                a.DoctorId,
-                a.PatientId,
-                a.Doctor.FirstName + " " + a.Doctor.LastName,
-                a.Patient.FirstName + " " + a.Patient.LastName,
-                a.ScheduledTime,
-                a.EndTime,
-                a.Status,
-                a.CancellationReason,
-                a.MeetingLink,
-                feedback
-            );
-        }).ToList();
+        var response = appointments.Select(a => new DoctorAppointmentResponse(
+            a.Id,
+            a.PatientId,
+            a.Patient.FirstName + " " + a.Patient.LastName,
+            a.Patient.ProfilePicture,
+            a.Patient.Gender,
+            a.Patient.DateOfBirth,
+            "Online",
+            a.ScheduledTime,
+            a.EndTime,
+            a.Status,
+            a.CancellationReason,
+            a.MeetingLink,
+            feedbackResponse
+        )).ToList();
 
         return Result.Success(response);
+
+
+        //var response = appointments.Select(a =>
+        //{
+        //    var feedback = a.Feedback == null ? null : new FeedbackResponse(
+        //        a.Feedback.Id,
+        //        a.Id,
+        //        a.Patient.FirstName + " " + a.Patient.LastName,
+        //        a.Doctor.FirstName + " " + a.Doctor.LastName,
+        //        a.Feedback.MedicalAttentionGiven,
+        //        a.Feedback.WasGoodListener,
+        //        a.Feedback.WillContinueTreatment,
+        //        a.Feedback.ExpectationsMet,
+        //        a.Feedback.RecommendDoctor,
+        //        a.Feedback.Rating
+        //    );
+
+        //    return new AppointmentResponse(
+        //        a.Id,
+        //        a.DoctorId,
+        //        a.PatientId,
+        //        a.Doctor.FirstName + " " + a.Doctor.LastName,
+        //        a.Patient.FirstName + " " + a.Patient.LastName,
+        //        a.ScheduledTime,
+        //        a.EndTime,
+        //        a.Status,
+        //        a.CancellationReason,
+        //        a.MeetingLink,
+        //        feedback
+        //    );
+        //}).ToList();
+
+        //return Result.Success(response);
     }
 
     public async Task<Result<List<DoctorAppointmentResponse>>> GetDoctorAppointmentsAsync(string doctorId, DateTime? date = null, CancellationToken cancellationToken = default)
@@ -500,4 +535,59 @@ public class AppointmentService(ApplicationDbContext context,
             .ToListAsync();
         return Result.Success(feedbacks);
     }     
+
+    public async Task<Result> WriteReportAsync(string doctorId, AppointmentReportRequest request, CancellationToken cancellationToken = default)
+    {
+        var doctor = await _userManager.Users
+        .OfType<Doctor>()
+        .FirstOrDefaultAsync(d => d.Id == doctorId, cancellationToken);
+
+        if (doctor is null)
+            return Result.Failure(UserErrors.NotFound);
+
+        // Get all appointment with report if any
+        var appointment = await _context.Appointments
+        .Include(a => a.Patient)
+        .Include(a => a.Report) // Include existing report
+        .FirstOrDefaultAsync(a => a.Id == request.AppointmentId && a.DoctorId == doctorId, cancellationToken);
+
+        if (appointment is null)
+            return Result.Failure(
+                new Error("Appointment.NotFound", "Appointment not found or does not belong to the doctor", StatusCodes.Status404NotFound));
+
+        // Create or update report
+        if (appointment.Report == null)
+        {
+            // Create report
+            appointment.Report = new AppointmentReport
+            {
+                AppointmentId = appointment.Id,
+                PatientName = request.PatientName,
+                Diagnosis = request.Diagnosis,
+                Medications = request.Medications,
+                CreatedAt = DateTime.UtcNow
+            };
+        }
+        else
+        {
+            // Update report
+            appointment.Report.PatientName = request.PatientName;
+            appointment.Report.Diagnosis = request.Diagnosis;
+            appointment.Report.Medications = request.Medications;
+            appointment.Report.UpdatedAt = DateTime.UtcNow;
+        }
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            // Log the exception
+            return Result.Failure(
+                new Error("Report.SaveFailed", "Failed to save the report", StatusCodes.Status500InternalServerError));
+        }
+    }
 }

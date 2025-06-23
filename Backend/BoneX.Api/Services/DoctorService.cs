@@ -319,6 +319,45 @@ public class DoctorService(
         return Result.Success(statistics);
     }
 
+    public async Task<Result<List<RecommendDoctors>>> GetRecommendedDoctorsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var doctors = await _userManager.Users
+                .OfType<Doctor>()
+                .Where(d => d.Location != null) // Only doctors with location
+                .Select(d => new
+                {
+                    DoctorId = d.Id,
+                    YearsOfExperience = d.YearsOfExperience,
+                    Latitude = d.Location!.Y,
+                    Longitude = d.Location!.X,
+                    // Calculate average rating from feedback
+                    Appointments = d.Appointments
+                        .Where(a => a.Feedback != null)
+                        .Select(a => a.Feedback!.Rating)
+                        .ToList()
+                })
+                .ToListAsync(cancellationToken);
+
+            var recommendedDoctors = doctors.Select(d => new RecommendDoctors(
+                DoctorId: d.DoctorId,
+                YearsOfExperience: d.YearsOfExperience,
+                Rating: d.Appointments.Any() ? Math.Round(d.Appointments.Average(), 1) : 0.0,
+                Latitude: d.Latitude,
+                Longitude: d.Longitude
+            )).ToList();
+
+            return Result.Success(recommendedDoctors);
+        }
+        catch (Exception ex)
+        {
+            // Log the exception
+            return Result.Failure<List<RecommendDoctors>>(
+                new Error("Doctors.RetrievalFailed", "Failed to retrieve recommended doctors", StatusCodes.Status500InternalServerError));
+        }
+    }
+
     private async Task SendConfirmationEmail(ApplicationUser user, string code)
     {
         var origin = _httpContextAccessor.HttpContext?.Request.Headers.Origin;

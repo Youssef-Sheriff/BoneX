@@ -10,5 +10,5 @@ public interface IDoctorService
     Task<Result<List<DoctorListResponse>>> GetAllDoctorsAsync();
     Task<Result<DoctorProfileResponse>> GetDoctorProfileAsync(string doctorId, CancellationToken cancellationToken = default);
     Task<Result<DoctorStatisticsResponse>> GetDoctorStatisticsAsync(string doctorId, CancellationToken cancellationToken = default);
-
+    Task<Result<List<RecommendDoctors>>> GetRecommendedDoctorsAsync(CancellationToken cancellationToken = default);
 }

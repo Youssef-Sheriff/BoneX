@@ -106,4 +106,13 @@ public class AppointmentsController(IAppointmentService appointmentService) : Co
         var result = await _appointmentService.GetFeedbacksAsync();
         return result.IsSuccess ? Ok(result) : result.ToProblem();
     }
+
+    [HttpPost("report")]
+    public async Task<IActionResult> WriteReport([FromBody] AppointmentReportRequest request, CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        var result = await _appointmentService.WriteReportAsync(userId!, request, cancellationToken);
+        return result.IsSuccess ? Ok(result) : result.ToProblem();
+    }
+
 }

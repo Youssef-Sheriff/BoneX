@@ -74,7 +74,16 @@ public class DoctorController(IDoctorService doctorService) : ControllerBase
         return Ok(result.Value);
     }
 
-       //[HttpGet("statistics")]
+    [HttpGet("recommended")]
+    public async Task<IActionResult> GetRecommendedDoctors(CancellationToken cancellationToken)
+    {
+        var result = await _doctorService.GetRecommendedDoctorsAsync(cancellationToken);
+        if (result.IsFailure)
+            return BadRequest(result.Error);
+        return Ok(result.Value);
+    }
+
+    //[HttpGet("statistics")]
     ////[Authorize(Roles = UserRoles.Doctor)]
     //public async Task<IActionResult> GetStatistics(CancellationToken cancellationToken)
     //{
@@ -107,4 +116,6 @@ public class DoctorController(IDoctorService doctorService) : ControllerBase
 
     //    return Ok(result.Value);
     //}
+
+
 }

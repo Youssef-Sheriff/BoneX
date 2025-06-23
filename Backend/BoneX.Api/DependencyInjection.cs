@@ -51,6 +51,7 @@ public static class DependencyInjection
         services.AddScoped<IXrayService, XrayService>();
         services.AddScoped<IDoctorAvailabilityService, DoctorAvailabilityService>();
         services.AddScoped<IFaceVerificationService, FaceVerificationService>();
+        services.AddScoped<IRecommenderService, RecommenderService>();
 
 
 
