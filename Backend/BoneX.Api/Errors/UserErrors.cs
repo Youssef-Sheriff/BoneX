@@ -28,4 +28,7 @@ public static class UserErrors
 
     public static readonly Error NotFound =
         new("User.UserNotFound", "User not found", StatusCodes.Status404NotFound);
+
+    public static readonly Error AccountDeactivated =
+        new("User.AccountDeactivated", "Account is deactivated", StatusCodes.Status403Forbidden);
 }

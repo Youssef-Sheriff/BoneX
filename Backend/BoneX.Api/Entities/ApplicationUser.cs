@@ -9,6 +9,7 @@ public class ApplicationUser : IdentityUser
     public DateOnly DateOfBirth { get; set; }
     public Gender Gender { get; set; }
     public string Role { get; set; } = UserRoles.Patient; // Default 
+    public bool active { get; set; } = true; // Default to active
     public string? ProfilePicture { get; set; }
     public Point? Location { get; set; } = new Point(0, 0) { SRID = 4326 };
 

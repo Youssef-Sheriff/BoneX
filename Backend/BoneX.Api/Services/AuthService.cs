@@ -33,6 +33,9 @@ public class AuthService(
         // check correct password 
         var result = await _signInManager.PasswordSignInAsync(user, password, false, false);
 
+        //if(!user.active)
+        //    return Result.Failure<AuthResponse>(UserErrors.AccountDeactivated);
+
         if (result.Succeeded)
         {
             // generate Jwt & refresh tokens

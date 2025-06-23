@@ -7,3 +7,12 @@ public record DoctorListResponse(
     string Brief,
     string ProfilePicture
 );
+
+public record DoctorListAdminResponse(
+    string Id,
+    string FullName,
+    string active,
+    string Speciality,
+    string Brief,
+    string ProfilePicture
+);

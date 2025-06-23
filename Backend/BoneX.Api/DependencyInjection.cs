@@ -52,6 +52,7 @@ public static class DependencyInjection
         services.AddScoped<IDoctorAvailabilityService, DoctorAvailabilityService>();
         services.AddScoped<IFaceVerificationService, FaceVerificationService>();
         services.AddScoped<IRecommenderService, RecommenderService>();
+        services.AddScoped<IAdmin, Admin>();
 
 
 

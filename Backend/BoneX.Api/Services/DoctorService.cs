@@ -40,6 +40,7 @@ public class DoctorService(
             PhoneNumber = request.PhoneNumber,
             //ProfilePicture = request.ProfilePicture,
             Role = UserRoles.Doctor,
+            active = false,
             DateOfBirth = request.DateOfBirth,
             Speciality = request.Speciality,
             Brief = request.Brief,
